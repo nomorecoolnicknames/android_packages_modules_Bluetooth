@@ -280,6 +280,18 @@ struct Controller::impl {
     auto complete_view = ReadLocalExtendedFeaturesCompleteView::Create(view);
     ASSERT(complete_view.IsValid());
     ErrorCode status = complete_view.GetStatus();
+    // Some controllers announce a maximum page they cannot read.  The MediaTek
+    // CONSYS Bluetooth 4.0 core of the Meizu M5c ("MTK MT0335") answers pages
+    // 0 and 1 with maximum page 2, and page 2 with 0x30 (Parameter Out Of
+    // Mandatory Range).  Keep the pages already read instead of aborting the
+    // stack; a controller that cannot even give page 0 still aborts.
+    if (status != ErrorCode::SUCCESS && !extended_lmp_features_array_.empty()) {
+      LOG_WARN("Read Local Extended Features page %zu failed: %s; using the first %zu page(s)",
+               extended_lmp_features_array_.size(), ErrorCodeText(status).c_str(),
+               extended_lmp_features_array_.size());
+      promise.set_value();
+      return;
+    }
     ASSERT_LOG(status == ErrorCode::SUCCESS, "Status 0x%02hhx, %s", status, ErrorCodeText(status).c_str());
     uint8_t page_number = complete_view.GetPageNumber();
     extended_lmp_features_array_.push_back(complete_view.GetExtendedLmpFeatures());
